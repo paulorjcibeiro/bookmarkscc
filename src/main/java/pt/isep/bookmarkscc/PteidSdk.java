@@ -1,4 +1,4 @@
-package pt.isep.bookmarkscc.pteid;
+package pt.isep.bookmarkscc;
 
 import pt.gov.cartaodecidadao.*;
 

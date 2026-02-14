@@ -6,8 +6,6 @@ import javafx.scene.control.*;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.VBox;
-import pt.isep.bookmarkscc.pteid.AuthResult;
-import pt.isep.bookmarkscc.pteid.PteidAuthService;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
