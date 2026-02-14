@@ -1,0 +1,19 @@
+#!/bin/sh
+set -e
+
+APP_ROOT="/opt/bookmarkscc/bookmarkscc"
+DESKTOP_SRC="$APP_ROOT/lib/bookmarkscc-BookmarksCC.desktop"
+DESKTOP_DST="/usr/share/applications/BookmarksCC.desktop"
+
+# instalar .desktop no sistema
+if [ -f "$DESKTOP_SRC" ]; then
+  cp "$DESKTOP_SRC" "$DESKTOP_DST"
+  chmod 644 "$DESKTOP_DST"
+fi
+
+# atualizar cache do desktop
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database
+fi
+
+exit 0
