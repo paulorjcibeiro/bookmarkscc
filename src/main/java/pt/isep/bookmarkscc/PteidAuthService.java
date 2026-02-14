@@ -5,17 +5,11 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.security.Signature;
 import java.security.cert.CertPath;
-import java.security.cert.CertPathBuilder;
 import java.security.cert.CertPathValidator;
-import java.security.cert.CertStore;
 import java.security.cert.CertificateFactory;
-import java.security.cert.CollectionCertStoreParameters;
-import java.security.cert.PKIXBuilderParameters;
 import java.security.cert.PKIXParameters;
 import java.security.cert.TrustAnchor;
-import java.security.cert.X509CertSelector;
 import java.security.cert.X509Certificate;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
@@ -28,6 +22,7 @@ public final class PteidAuthService {
     public static AuthResult authenticateWithPinChallenge() {
         try {
             PteidSdk.start();
+
             if (!PteidSdk.isCardPresent())
                 return AuthResult.fail("Nenhum cartão presente.");
 
@@ -46,6 +41,8 @@ public final class PteidAuthService {
                 photo = b != null ? b.GetBytes() : null;
             } catch (Exception ignored) {}
 
+            // ================= CERTIFICADO DO UTILIZADOR =================
+
             byte[] certBytes = card.getCertificates()
                     .getAuthentication()
                     .getCertData()
@@ -55,51 +52,63 @@ public final class PteidAuthService {
                     CertificateFactory.getInstance("X.509")
                             .generateCertificate(new ByteArrayInputStream(certBytes));
 
-            // ================= VALIDAR CERTIFICADO COM ROOT CA =================
+            cert.checkValidity();
 
-                cert.checkValidity();
+            // ================= VALIDAÇÃO PKIX =================
 
-                CertificateFactory cf = CertificateFactory.getInstance("X.509");
+            CertificateFactory cf = CertificateFactory.getInstance("X.509");
 
-                // 1) Trust Anchor (Root oficial do Estado) em resources
-                X509Certificate rootCert;
-                try (var in = PteidAuthService.class.getResourceAsStream("/ecraizestado002.crt")) {
-                if (in == null) return AuthResult.fail("Root CA não encontrada: /ECRaizEstado.crt");
+            // Root oficial do Estado (Trust Anchor)
+            X509Certificate rootCert;
+            try (var in = PteidAuthService.class
+                    .getResourceAsStream("/ecraizestado002.crt")) {
+
+                if (in == null)
+                    return AuthResult.fail("Root CA (ecraizestado002.crt) não encontrada.");
+
                 rootCert = (X509Certificate) cf.generateCertificate(in);
-                }
-                TrustAnchor trustAnchor = new TrustAnchor(rootCert, null);
-                PKIXParameters params = new PKIXParameters(Set.of(trustAnchor));
-                params.setRevocationEnabled(false); // mínimo para o assignment
+            }
 
-                // 2) Intermédio 0017 (vem do cartão via getCA())
-                X509Certificate ecAut0017 = (X509Certificate)
-                        cf.generateCertificate(new ByteArrayInputStream(
-                                card.getCertificates().getCA().getCertData().GetBytes()
-                        ));
+            TrustAnchor trustAnchor = new TrustAnchor(rootCert, null);
+            PKIXParameters params = new PKIXParameters(Set.of(trustAnchor));
+            params.setRevocationEnabled(false);
 
-                // 3) Intermédio "Cartão de Cidadão 006" (vem de resources)
-                X509Certificate cc006;
-                try (var in = PteidAuthService.class.getResourceAsStream("/CartaoCidadao006.crt")) {
-                if (in == null) return AuthResult.fail("Intermédio não encontrado: /CartaoCidadao006.crt");
+            // Intermédio do cartão (EC Autenticação 0017)
+            X509Certificate ecAut0017 = (X509Certificate)
+                    cf.generateCertificate(new ByteArrayInputStream(
+                            card.getCertificates()
+                                .getCA()
+                                .getCertData()
+                                .GetBytes()
+                    ));
+
+            // Intermédio CC 006 (resource)
+            X509Certificate cc006;
+            try (var in = PteidAuthService.class
+                    .getResourceAsStream("/CartaoCidadao006.crt")) {
+
+                if (in == null)
+                    return AuthResult.fail("Intermédio CartaoCidadao006.crt não encontrado.");
+
                 cc006 = (X509Certificate) cf.generateCertificate(in);
-                }
-                System.out.println("006 ISSUER: " + cc006.getIssuerX500Principal());
-                System.out.println("ROOT SUBJECT: " + rootCert.getSubjectX500Principal());
+            }
 
-                // 4) Validar caminho explícito: user -> 0017 -> 006
-                CertPath certPath = cf.generateCertPath(List.of(cert, ecAut0017, cc006));
-                CertPathValidator.getInstance("PKIX").validate(certPath, params);
+            // Cadeia explícita: user → 0017 → 006
+            CertPath certPath = cf.generateCertPath(List.of(cert, ecAut0017, cc006));
+            CertPathValidator.getInstance("PKIX").validate(certPath, params);
 
-            // ================= FIM VALIDAÇÃO =================
+            // ================= ASSINATURA CHALLENGE =================
 
             byte[] challenge = new byte[32];
             new SecureRandom().nextBytes(challenge);
 
             byte[] hash = MessageDigest.getInstance("SHA-256").digest(challenge);
-            byte[] signature = card.Sign(new PTEID_ByteArray(hash, hash.length), false)
+
+            byte[] signature = card
+                    .Sign(new PTEID_ByteArray(hash, hash.length), false)
                     .GetBytes();
 
-            var sig = Signature.getInstance("SHA256withRSA");
+            Signature sig = Signature.getInstance("SHA256withRSA");
             sig.initVerify(cert.getPublicKey());
             sig.update(challenge);
 
