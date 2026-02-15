@@ -15,8 +15,19 @@ public final class Session {
     }
 
     public static void logout() {
-        name = doc = null;
-        key = photo = null;
+          
+        if (key != null) {
+            java.util.Arrays.fill(key, (byte) 0);
+            key = null;
+        }
+
+        if (photo != null) {
+            java.util.Arrays.fill(photo, (byte) 0);
+            photo = null;
+        }
+
+        name = null;
+        doc = null;
     }
 
     public static boolean isLoggedIn() {

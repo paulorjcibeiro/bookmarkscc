@@ -18,6 +18,8 @@ public final class AppView {
 
     public final VBox root = new VBox(12);
     private static Connection conn;
+    private java.util.concurrent.ScheduledExecutorService monitor;
+
 
     public AppView() {
         root.setPadding(new Insets(16));
@@ -56,6 +58,9 @@ public final class AppView {
     /* ================= MAIN ================= */
 
     private void showMain() {
+        
+        startCardMonitor();
+        
         ImageView photo = new ImageView();
         photo.setFitWidth(90);
         photo.setPreserveRatio(true);
@@ -76,10 +81,7 @@ public final class AppView {
         add.setOnAction(e -> addBookmark(list));
 
         Button logout = new Button("Logout");
-        logout.setOnAction(e -> {
-            Session.logout();
-            showLogin();
-        });
+        logout.setOnAction(e -> secureShutdown());
 
         root.getChildren().setAll(photo, who, list, add, logout);
     }
@@ -169,5 +171,35 @@ public final class AppView {
 
         return conn;
     }
+    /* ================= CARD MONITOR ================= */
+
+    private void startCardMonitor() {
+
+        monitor = java.util.concurrent.Executors
+                .newSingleThreadScheduledExecutor();
+
+        monitor.scheduleAtFixedRate(() -> {
+            try {
+                if (!PteidSdk.isCardPresent()) {
+                    javafx.application.Platform.runLater(this::secureShutdown);
+                }
+            } catch (Exception ignored) {}
+
+        }, 1, 1, java.util.concurrent.TimeUnit.SECONDS);
+    }
+
+    private void stopCardMonitor() {
+        if (monitor != null) {
+            monitor.shutdownNow();
+            monitor = null;
+        }
+    }
+
+    private void secureShutdown() {
+        stopCardMonitor();
+        Session.logout();
+        javafx.application.Platform.exit();
+    }
+
 }
 
